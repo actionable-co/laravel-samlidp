@@ -1,9 +1,15 @@
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/codegreencreative/laravel-samlidp.svg?style=flat-square)](https://packagist.org/packages/codegreencreative/laravel-samlidp)
 [![Total Downloads](https://img.shields.io/packagist/dt/codegreencreative/laravel-samlidp.svg?style=flat-square)](https://packagist.org/packages/codegreencreative/laravel-samlidp)
 
+[Buy me a coffee](https://www.buymeacoffee.com/upwebdesign) :coffee:
+
 # Laravel SAML IdP
 
 This package allows you to implement your own Identification Provider (idP) using the SAML 2.0 standard to be used with supporting SAML 2.0 Service Providers (SP).
+
+- Starting in version ^5.1, Laravel 9 is supported.
+- Starting in version ^5.2.4, Laravel 10 is supported.
+- Starting in version ^5.2.9, Laravel 11 is supported.
 
 In this version we will be allowing for Laravel ^7.0 or ^8.0.
 
@@ -52,6 +58,8 @@ Options:
   --certname=<name>  Name of the certificate file [default: cert.pem]
 ```
 
+Optionally, you can set the certificate and key using two environment variables: `SAMLIDP_CERT` and `SAMLIDP_KEY`.
+
 ## Usage
 
 Within your login view, probably `resources/views/auth/login.blade.php` add the SAMLRequest directive beneath the CSRF directive:
@@ -91,10 +99,99 @@ return [
             'destination' => 'https://example.com/saml/acs',
             // Simple Logout URL of the Service Provider
             'logout' => 'https://example.com/saml/sls',
-        ]
+            // SP certificate
+            // 'certificate' => '',
+            // Turn off auto appending of the idp query param
+            // 'query_params' => false,
+            // Turn off the encryption of the assertion per SP
+            // 'encrypt_assertion' => false
+        ],
     ],
     // List of guards saml idp will catch Authenticated, Login and Logout events (thanks @abublihi)
-    'guards' => ['web']
+    'guards' => ['web'],
+];
+```
+
+#### Setting the service providers to be read from the database
+
+Run migrations
+
+```bash
+php artisan migrate
+```
+
+Add a service provider to the database table `saml_service_providers`. The database table follows the same principles
+as the config file.
+
+```php
+<?php
+
+return [
+    // ...
+    'sp' => \CodeGreenCreative\SamlIdp\Models\SamlServiceProvider::class,
+    // ...
+];
+```
+
+### Setting the service provider certificate
+
+There are three options to set the service provider certificate.
+
+1. Provide the certificate as a string:
+
+```php
+<?php
+
+return [
+    // ...
+    'sp' => [
+        // Base64 encoded ACS URL
+        'aHR0cHM6Ly9teWZhY2Vib29rd29ya3BsYWNlLmZhY2Vib29rLmNvbS93b3JrL3NhbWwucGhw' => [
+            // ...
+            // SP certificate
+            // 'certificate' => "-----BEGIN CERTIFICATE-----\nb3BlbnNzaC1rZXktdjEA...LWdlbmVyYXRlZC1rZXkBAgM\n-----END CERTIFICATE-----"
+        ],
+    ],
+    // ...
+];
+```
+
+2. Load from a variable within the `.env` file.
+   You can choose an appropriate variable name that best matches your projects requirements.
+
+```php
+<?php
+
+return [
+    // ...
+    'sp' => [
+        // Base64 encoded ACS URL
+        'aHR0cHM6Ly9teWZhY2Vib29rd29ya3BsYWNlLmZhY2Vib29rLmNvbS93b3JrL3NhbWwucGhw' => [
+            // ...
+            // SP certificate
+            // 'certificate' => env('SAML_SP_CERTIFICATE', '')
+        ],
+    ],
+    // ...
+];
+```
+
+3. Load the certificate from a file:
+
+```php
+<?php
+
+return [
+    // ...
+    'sp' => [
+        // Base64 encoded ACS URL
+        'aHR0cHM6Ly9teWZhY2Vib29rd29ya3BsYWNlLmZhY2Vib29rLmNvbS93b3JrL3NhbWwucGhw' => [
+            // ...
+            // SP certificate
+            // 'certificate' => 'file://' . storage_path('samlidp/service-provider.pem')
+        ],
+    ],
+    // ...
 ];
 ```
 
@@ -113,7 +210,7 @@ LOGOUT_AFTER_SLO=true
 If you wish to return the user back to the SP by which SLO was initiated, you may provide an additional query parameter to the `/saml/logout` route, for example:
 
 ```
-https://idp.com/saml/logout?redirect_to=mysp.com
+https://idp.com/saml/logout?return_to=mysp.com
 ```
 
 After all SP's have been logged out of, the user will be redirected to `mysp.com`. For this to work properly you need to add the `sp_slo_redirects` option to your `config/samlidp.php` config file, for example:
@@ -129,7 +226,6 @@ return [
     'sp_slo_redirects' => [
         'mysp.com' => 'https://mysp.com',
     ],
-
 ];
 ```
 
@@ -183,5 +279,19 @@ class SamlAssertionAttributes
             ->addAttribute(new Attribute(ClaimTypes::NAME, auth()->user()->name));
     }
 }
-
 ```
+
+## Digest Algorithm (optional)
+
+See `\RobRichards\XMLSecLibs\XMLSecurityDSig` for all digest options.
+
+```php
+<?php
+
+return [
+    // Defind what digital algorithm you want to use
+    'digest_algorithm' => \RobRichards\XMLSecLibs\XMLSecurityDSig::SHA1,
+];
+```
+
+[Buy me a coffee](https://www.buymeacoffee.com/upwebdesign) :coffee:

@@ -30,6 +30,7 @@ class LaravelSamlIdpServiceProvider extends ServiceProvider
     {
         $this->registerEvents();
         $this->registerRoutes();
+        $this->registerMigrations();
         $this->registerResources();
         $this->registerBladeComponents();
     }
@@ -72,11 +73,6 @@ class LaravelSamlIdpServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__ . '/../config/samlidp.php' => config_path('samlidp.php'),
             ], 'samlidp_config');
-
-            // Create storage/samlidp directory
-            if (!file_exists(storage_path() . "/samlidp")) {
-                mkdir(storage_path() . "/samlidp", 0755, true);
-            }
         }
     }
 
@@ -88,9 +84,7 @@ class LaravelSamlIdpServiceProvider extends ServiceProvider
     public function registerBladeComponents()
     {
         Blade::directive('samlidp', function ($expression) {
-            if (request()->filled('SAMLRequest')) {
-                return "<?php echo view('samlidp::components.input'); ?>";
-            }
+            return "<?php echo request()->filled('SAMLRequest') ? view('samlidp::components.input') : ''; ?>";
         });
     }
 
@@ -111,7 +105,7 @@ class LaravelSamlIdpServiceProvider extends ServiceProvider
     private function registerEvents()
     {
         $events = $this->app->make(Dispatcher::class);
-        foreach ($this->events as $event => $listeners) {
+        foreach (config('samlidp.events', $this->default_events) as $event => $listeners) {
             foreach ($listeners as $listener) {
                 $events->listen($event, $listener);
             }
@@ -156,5 +150,12 @@ class LaravelSamlIdpServiceProvider extends ServiceProvider
                 CreateServiceProvider::class,
             ]);
         }
+    }
+
+    private function registerMigrations()
+    {
+        $this->publishesMigrations([
+            __DIR__.'/../database/migrations' => database_path('migrations'),
+        ]);
     }
 }
