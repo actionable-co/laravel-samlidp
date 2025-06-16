@@ -4,6 +4,7 @@ namespace CodeGreenCreative\SamlIdp\Listeners;
 
 use Illuminate\Auth\Events\Authenticated;
 use CodeGreenCreative\SamlIdp\Jobs\SamlSso;
+use Illuminate\Support\Facades\Log;
 
 class SamlAuthenticated
 {
@@ -23,5 +24,18 @@ class SamlAuthenticated
         ) {
             abort(response(SamlSso::dispatchSync($event->guard), 302));
         }
+
+        $relayState = request()->input('RelayState');
+
+        if ($relayState) {
+            session(['saml_relay_state' => $relayState]);
+        }
+
+        if (!request()->filled('SAMLRequest')) {
+            Log::error('SAMLRequest parameter is missing in the request.', ['userId' => $event->user->id]);
+            return;
+        }
+
+        SamlSso::dispatch($event->user);
     }
 }
