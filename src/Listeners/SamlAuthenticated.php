@@ -5,6 +5,7 @@ namespace CodeGreenCreative\SamlIdp\Listeners;
 use Illuminate\Auth\Events\Authenticated;
 use CodeGreenCreative\SamlIdp\Jobs\SamlSso;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class SamlAuthenticated
 {
@@ -27,8 +28,13 @@ class SamlAuthenticated
 
         $relayState = request()->input('RelayState');
 
-        if ($relayState) {
-            session(['saml_relay_state' => $relayState]);
+        if ($relayState && filter_var($relayState, FILTER_VALIDATE_URL)) {
+            foreach (config('samlidp.allowed_relay_domains', []) as $domain) {
+                if (Str::startsWith($relayState, $domain)) {
+                    session(['saml_relay_state' => $relayState]);
+                    break;
+                }
+            }
         }
 
         if (!request()->filled('SAMLRequest')) {

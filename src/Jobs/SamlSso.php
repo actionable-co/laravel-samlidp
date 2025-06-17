@@ -62,15 +62,13 @@ class SamlSso implements SamlContract
      *
      * @return void
      */
-    public function handle()
+    public function handle(): bool|string
     {
         try {
             $rawSamlRequest = request('SAMLRequest');
             if (is_null($rawSamlRequest)) {
                 throw new \Exception('SAMLRequest parameter is missing in the request.');
             }
-
-            Log::info('Raw SAMLRequest:', ['SAMLRequest' => $rawSamlRequest]);
 
             $decodedRequest = base64_decode($rawSamlRequest, true);
             if ($decodedRequest === false) {
@@ -90,9 +88,19 @@ class SamlSso implements SamlContract
 
             $this->setDestination();
 
+            // Handle RelayState redirect
             $relayState = session()->pull('saml_relay_state');
 
-            return redirect($relayState ?: $this->response());
+            if ($relayState && filter_var($relayState, FILTER_VALIDATE_URL)) {
+                foreach (config('samlidp.allowed_relay_domains', []) as $domain) {
+                    if (str_starts_with($relayState, $domain)) {
+                        return redirect($relayState);
+                    }
+                }
+            }
+
+            return $this->response();
+
         } catch (\Exception $e) {
             Log::error('Error processing SAMLRequest:', ['exception' => $e->getMessage()]);
             throw $e;
