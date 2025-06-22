@@ -17,6 +17,10 @@ class SamlAuthenticated
      */
     public function handle(Authenticated $event)
     {
+        Log::info('RelayState debug', [
+            'RelayState_raw' => request()->input('RelayState'),
+            'query' => request()->query()
+        ]);
         if (
             in_array($event->guard, config('samlidp.guards')) &&
             request()->filled('SAMLRequest') &&
