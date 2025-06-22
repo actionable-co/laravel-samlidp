@@ -33,6 +33,7 @@ use LightSaml\Model\Assertion\EncryptedAssertionWriter;
 use CodeGreenCreative\SamlIdp\Traits\PerformsSingleSignOn;
 use CodeGreenCreative\SamlIdp\Events\Assertion as AssertionEvent;
 use CodeGreenCreative\SamlIdp\Exceptions\DestinationMissingException;
+use Illuminate\Support\Facades\Log;
 
 class SamlSso implements SamlContract
 {
@@ -61,17 +62,49 @@ class SamlSso implements SamlContract
      *
      * @return void
      */
-    public function handle()
+    public function handle(): bool|string
     {
-        $deserializationContext = new DeserializationContext;
-        $deserializationContext->getDocument()->loadXML(gzinflate(base64_decode(request('SAMLRequest'))));
+        try {
+            $rawSamlRequest = request('SAMLRequest');
+            if (is_null($rawSamlRequest)) {
+                throw new \Exception('SAMLRequest parameter is missing in the request.');
+            }
 
-        $this->authn_request = new AuthnRequest;
-        $this->authn_request->deserialize($deserializationContext->getDocument()->firstChild, $deserializationContext);
+            $decodedRequest = base64_decode($rawSamlRequest, true);
+            if ($decodedRequest === false) {
+                throw new \Exception('Failed to Base64 decode the SAMLRequest parameter.');
+            }
 
-        $this->setDestination();
+            $inflatedRequest = gzinflate($decodedRequest);
+            if ($inflatedRequest === false) {
+                throw new \Exception('Failed to inflate the SAMLRequest parameter.');
+            }
 
-        return $this->response();
+            $deserializationContext = new DeserializationContext;
+            $deserializationContext->getDocument()->loadXML($inflatedRequest);
+
+            $this->authn_request = new AuthnRequest;
+            $this->authn_request->deserialize($deserializationContext->getDocument()->firstChild, $deserializationContext);
+
+            $this->setDestination();
+
+            // Handle RelayState redirect
+            $relayState = session()->pull('saml_relay_state');
+
+            if ($relayState && filter_var($relayState, FILTER_VALIDATE_URL)) {
+                foreach (config('samlidp.allowed_relay_domains', []) as $domain) {
+                    if (str_starts_with($relayState, $domain)) {
+                        return redirect($relayState);
+                    }
+                }
+            }
+
+            return $this->response();
+
+        } catch (\Exception $e) {
+            Log::error('Error processing SAMLRequest:', ['exception' => $e->getMessage()]);
+            throw $e;
+        }
     }
 
     public function response()
@@ -97,7 +130,7 @@ class SamlSso implements SamlContract
                             auth($this->guard)
                                 ->user()
                                 ->__get(config('samlidp.email_field', 'email')),
-                            config('samlidp.email_name_id', SamlConstants::NAME_ID_FORMAT_EMAIL)
+                            SamlConstants::NAME_ID_FORMAT_EMAIL
                         )
                     )
                     ->addSubjectConfirmation(
@@ -172,7 +205,7 @@ class SamlSso implements SamlContract
 
     private function setDestination()
     {
-        $destination = $this->getServiceProviderConfigValue($this->authn_request, 'destination');
+        $destination = config(sprintf('samlidp.sp.%s.destination', $this->getServiceProvider($this->authn_request)));
 
         if (empty($destination)) {
             throw new DestinationMissingException(
@@ -197,7 +230,7 @@ class SamlSso implements SamlContract
 
     private function getQueryParams()
     {
-        $queryParams = $this->getServiceProviderConfigValue($this->authn_request, 'query_params');
+        $queryParams = config(sprintf('samlidp.sp.%s.query_params', $this->getServiceProvider($this->authn_request)));
 
         if (is_null($queryParams)) {
             $queryParams = [
@@ -210,7 +243,7 @@ class SamlSso implements SamlContract
 
     private function getSpCertificate()
     {
-        $spCertificate = $this->getServiceProviderConfigValue($this->authn_request, 'certificate');
+        $spCertificate = config(sprintf('samlidp.sp.%s.certificate', $this->getServiceProvider($this->authn_request)));
 
         return strpos($spCertificate, 'file://') === 0
             ? X509Certificate::fromFile($spCertificate)
@@ -224,7 +257,9 @@ class SamlSso implements SamlContract
      */
     private function encryptAssertion(): bool
     {
-        return $this->getServiceProviderConfigValue($this->authn_request, 'encrypt_assertion')
-            ?? config('samlidp.encrypt_assertion', true);
+        return config(
+            sprintf('samlidp.sp.%s.encrypt_assertion', $this->getServiceProvider($this->authn_request)),
+            config('samlidp.encrypt_assertion', true)
+        );
     }
 }

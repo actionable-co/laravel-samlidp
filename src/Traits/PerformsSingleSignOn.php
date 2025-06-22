@@ -2,7 +2,6 @@
 
 namespace CodeGreenCreative\SamlIdp\Traits;
 
-use CodeGreenCreative\SamlIdp\Models\SamlServiceProvider;
 use Illuminate\Support\Facades\Storage;
 use LightSaml\Binding\BindingFactory;
 use LightSaml\Context\Profile\MessageContext;
@@ -69,11 +68,19 @@ trait PerformsSingleSignOn
      */
     protected function getCertificate(): X509Certificate
     {
-        $certificate = config('samlidp.cert') ?: Storage::disk('samlidp')->get(config('samlidp.certname', 'cert.pem'));
+        $certificatePath = base_path('storage/samlidp/cert.pem');
 
-        return (strpos($certificate, 'file://') === 0)
-            ? X509Certificate::fromFile($certificate)
-            : (new X509Certificate)->loadPem($certificate);
+        if (!file_exists($certificatePath)) {
+            throw new \Exception("Certificate file not found at $certificatePath");
+        }
+
+        $contents = file_get_contents($certificatePath);
+
+        if (strpos($contents, 'BEGIN CERTIFICATE') === false) {
+            throw new \Exception("Invalid certificate format in $certificatePath");
+        }
+
+        return (new X509Certificate)->loadPem($contents);
     }
 
     /**

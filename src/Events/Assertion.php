@@ -2,6 +2,7 @@
 
 namespace CodeGreenCreative\SamlIdp\Events;
 
+use CodeGreenCreative\SamlIdp\Jobs\SamlSso;
 use LightSaml\ClaimTypes;
 use Illuminate\Queue\SerializesModels;
 use LightSaml\Model\Assertion\Attribute;
@@ -31,5 +32,21 @@ class Assertion
         $this->attribute_statement
             ->addAttribute(new Attribute(ClaimTypes::EMAIL_ADDRESS, auth($guard)->user()->__get(config('samlidp.email_field', 'email'))))
             ->addAttribute(new Attribute(ClaimTypes::COMMON_NAME, auth($guard)->user()->__get(config('samlidp.name_field', 'name'))));
+    }
+
+    public function handle(\Illuminate\Auth\Events\Login $event)
+    {
+        $relayState = request()->input('RelayState');
+
+        if ($relayState && filter_var($relayState, FILTER_VALIDATE_URL)) {
+            foreach (config('samlidp.allowed_relay_domains', []) as $domain) {
+                if (str_starts_with($relayState, $domain)) {
+                    session(['saml_relay_state' => $relayState]);
+                    break;
+                }
+            }
+        }
+
+        SamlSso::dispatch($event->user);
     }
 }
