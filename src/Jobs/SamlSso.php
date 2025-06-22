@@ -65,7 +65,12 @@ class SamlSso implements SamlContract
     public function handle(): bool|string
     {
         try {
-            $rawSamlRequest = request('SAMLRequest');
+            Log::info('SAML SSO incoming request', [
+                'full_url' => request()->fullUrl(),
+                'query_params' => request()->query(),
+                'has_SAMLRequest' => request()->has('SAMLRequest'),
+            ]);
+            $rawSamlRequest = request()->input('SAMLRequest');
             if (is_null($rawSamlRequest)) {
                 throw new \Exception('SAMLRequest parameter is missing in the request.');
             }
