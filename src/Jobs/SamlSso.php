@@ -48,6 +48,8 @@ class SamlSso implements SamlContract
 
     private $destination;
 
+    private $relayState;
+
     /**
      * [__construct description]
      */
@@ -94,12 +96,12 @@ class SamlSso implements SamlContract
             $this->setDestination();
 
             // Handle RelayState redirect
-            $relayState = session()->pull('saml_relay_state');
+            $this->relayState = session()->pull('saml_relay_state');
 
-            if ($relayState && filter_var($relayState, FILTER_VALIDATE_URL)) {
+            if ($this->relayState && filter_var($this->relayState, FILTER_VALIDATE_URL)) {
                 foreach (config('samlidp.allowed_relay_domains', []) as $domain) {
-                    if (str_starts_with($relayState, $domain)) {
-                        return redirect($relayState);
+                    if (str_starts_with($this->relayState, $domain)) {
+                        return redirect($this->relayState);
                     }
                 }
             }
@@ -202,7 +204,7 @@ class SamlSso implements SamlContract
         $messageContext = new MessageContext;
         $messageContext->setMessage($this->response)->asResponse();
         $message = $messageContext->getMessage();
-        $message->setRelayState(request('RelayState'));
+        $message->setRelayState($this->relayState ?? request('RelayState'));
         $httpResponse = $postBinding->send($messageContext);
 
         return $httpResponse->getContent();
